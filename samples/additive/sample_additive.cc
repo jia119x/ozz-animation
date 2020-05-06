@@ -57,12 +57,12 @@ OZZ_OPTIONS_DECLARE_STRING(animation,
 
 // Additive animation archive can be specified as an option.
 OZZ_OPTIONS_DECLARE_STRING(
-    curl_animation, "Path to the additive curl animation (ozz archive format).",
-    "media/animation_curl_additive.ozz", false)
-OZZ_OPTIONS_DECLARE_STRING(
     splay_animation,
     "Path to the additive splay animation (ozz archive format).",
     "media/animation_splay_additive.ozz", false)
+OZZ_OPTIONS_DECLARE_STRING(
+    curl_animation, "Path to the additive curl animation (ozz archive format).",
+    "media/animation_curl_additive.ozz", false)
 
 class AdditiveBlendSampleApplication : public ozz::sample::Application {
  public:
@@ -166,7 +166,7 @@ class AdditiveBlendSampleApplication : public ozz::sample::Application {
     models_.resize(num_joints);
 
     // Reads and extract additive animations pose.
-    const char* filenames[] = {OPTIONS_curl_animation, OPTIONS_splay_animation};
+    const char* filenames[] = {OPTIONS_splay_animation, OPTIONS_curl_animation};
     for (int i = 0; i < kNumLayers; ++i) {
       // Reads animation on the stack as it won't need to be maintained in
       // memory. Only the pose is needed.
@@ -218,12 +218,15 @@ class AdditiveBlendSampleApplication : public ozz::sample::Application {
         _im_gui->DoSlider(label, 0.f, 1.f, &base_weight_, 1.f);
 
         _im_gui->DoLabel("Additive layer:");
-        const char* kLayersName[kNumLayers] = {"Curl", "Splay"};
+        ozz::array<float, 2> weights;
+        std::copy(std::begin(additive_weigths_), std::end(additive_weigths_),
+                  std::begin(weights));
 
-        for (size_t i = 0; i < kNumLayers; ++i) {
-          std::sprintf(label, "%s weight: %.2f", kLayersName[i],
-                       additive_weigths_[i]);
-          _im_gui->DoSlider(label, -.2f, 1.f, &additive_weigths_[i]);
+        std::sprintf(label, "Weights\nCurl: %.2f\nSplay: %.2f",
+                     additive_weigths_[kCurl], additive_weigths_[kSplay]);
+        if (_im_gui->DoSlider2D(label, {{0.f, 0.f}}, {{1.f, 1.f}}, &weights)) {
+          std::copy(std::begin(weights), std::end(weights),
+                    std::begin(additive_weigths_));
         }
       }
     }
@@ -267,7 +270,7 @@ class AdditiveBlendSampleApplication : public ozz::sample::Application {
   ozz::animation::Skeleton skeleton_;
 
   // The number of additive layers to blend.
-  enum { kCurl, kSplay, kNumLayers };
+  enum { kSplay, kCurl, kNumLayers };
 
   // Runtime animation.
   ozz::animation::Animation base_animation_;
