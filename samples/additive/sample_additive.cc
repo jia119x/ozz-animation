@@ -67,11 +67,19 @@ OZZ_OPTIONS_DECLARE_STRING(
 class AdditiveBlendSampleApplication : public ozz::sample::Application {
  public:
   AdditiveBlendSampleApplication()
-      : base_weight_(0.f), additive_weigths_{.3f, .9f} {}
+      : base_weight_(0.f),
+        additive_weigths_{.3f, .9f},
+        auto_animate_weights_(true) {}
 
  protected:
   // Updates current animation time and skeleton pose.
   virtual bool OnUpdate(float _dt, float) {
+    // For the sample purpose, animates additive weights automatically so the
+    // hand moves.
+    if (auto_animate_weights_) {
+      AnimateWeights(_dt);
+    }
+
     // Updates base animation time for main animation.
     controller_.Update(base_animation_, _dt);
 
@@ -130,6 +138,13 @@ class AdditiveBlendSampleApplication : public ozz::sample::Application {
     }
 
     return true;
+  }
+
+  void AnimateWeights(float _dt) {
+    static float t = 0.f;
+    t += _dt;
+    additive_weigths_[0] = .5f + std::cos(t * 1.7f) * .5f;
+    additive_weigths_[1] = .5f + std::cos(t * 2.5f) * .5f;
   }
 
   // Samples animation, transforms to model space and renders.
@@ -240,6 +255,7 @@ class AdditiveBlendSampleApplication : public ozz::sample::Application {
         _im_gui->DoSlider(label, 0.f, 1.f, &base_weight_, 1.f);
 
         _im_gui->DoLabel("Additive layer:");
+        _im_gui->DoCheckBox("Animates weights", &auto_animate_weights_);
         ozz::array<float, 2> weights;
         std::copy(std::begin(additive_weigths_), std::end(additive_weigths_),
                   std::begin(weights));
@@ -247,6 +263,7 @@ class AdditiveBlendSampleApplication : public ozz::sample::Application {
         std::sprintf(label, "Weights\nCurl: %.2f\nSplay: %.2f",
                      additive_weigths_[kCurl], additive_weigths_[kSplay]);
         if (_im_gui->DoSlider2D(label, {{0.f, 0.f}}, {{1.f, 1.f}}, &weights)) {
+          auto_animate_weights_ = false;  // User interacted.
           std::copy(std::begin(weights), std::end(weights),
                     std::begin(additive_weigths_));
         }
@@ -274,7 +291,7 @@ class AdditiveBlendSampleApplication : public ozz::sample::Application {
       const ozz::math::Float4x4& hand_matrix = models_[hand];
       ozz::math::Float3 hand_position;
       ozz::math::Store3PtrU(hand_matrix.cols[3], &hand_position.x);
-      const ozz::math::Float3 extent(.1f);
+      const ozz::math::Float3 extent(.15f);
       _bound->min = hand_position - extent;
       _bound->max = hand_position + extent;
     } else {
@@ -322,6 +339,9 @@ class AdditiveBlendSampleApplication : public ozz::sample::Application {
   // Buffer of model space matrices. These are computed by the local-to-model
   // job after the blending stage.
   ozz::vector<ozz::math::Float4x4> models_;
+
+  // Automatically animates additive weights.
+  bool auto_animate_weights_;
 };
 
 int main(int _argc, const char** _argv) {
