@@ -67,7 +67,7 @@ OZZ_OPTIONS_DECLARE_STRING(
 class AdditiveBlendSampleApplication : public ozz::sample::Application {
  public:
   AdditiveBlendSampleApplication()
-      : base_weight_(0.f), additive_weigths_{1.f, 0.f} {}
+      : base_weight_(0.f), additive_weigths_{.3f, .9f} {}
 
  protected:
   // Updates current animation time and skeleton pose.
@@ -95,6 +95,7 @@ class AdditiveBlendSampleApplication : public ozz::sample::Application {
     ozz::animation::BlendingJob::Layer layers[1];
     layers[0].transform = make_span(locals_);
     layers[0].weight = base_weight_;
+    layers[0].joint_weights = make_span(base_joint_weights_);
 
     // Prepares additive blending layers.
     ozz::animation::BlendingJob::Layer additive_layers[kNumLayers];
@@ -137,6 +138,21 @@ class AdditiveBlendSampleApplication : public ozz::sample::Application {
                                   ozz::math::Float4x4::identity());
   }
 
+  bool SetJointWeights(const char* _name, float _weight) {
+    const auto set_joint = [this, _weight](int _joint, int) {
+      ozz::math::SimdFloat4& soa_weight = base_joint_weights_[_joint / 4];
+      soa_weight = ozz::math::SetI(
+          soa_weight, ozz::math::simd_float4::Load1(_weight), _joint % 4);
+    };
+
+    const int joint = FindJoint(skeleton_, _name);
+    if (joint >= 0) {
+      ozz::animation::IterateJointsDF(skeleton_, set_joint, joint);
+      return true;
+    }
+    return false;
+  }
+
   virtual bool OnInitialize() {
     // Reading skeleton.
     if (!ozz::sample::LoadSkeleton(OPTIONS_skeleton, &skeleton_)) {
@@ -157,13 +173,19 @@ class AdditiveBlendSampleApplication : public ozz::sample::Application {
     // Allocates sampling cache.
     cache_.Resize(num_joints);
 
-    blended_locals_.resize(num_soa_joints);
-
     // Allocates local space runtime buffers for base animation.
     locals_.resize(num_soa_joints);
 
     // Allocates model space runtime buffers of blended data.
     models_.resize(num_joints);
+
+    // Storage for blending stage output.
+    blended_locals_.resize(num_soa_joints);
+
+    // Allocates and sets base animation mask weights to one.
+    base_joint_weights_.resize(num_soa_joints, ozz::math::simd_float4::one());
+    SetJointWeights("Lefthand", 0.f);
+    SetJointWeights("RightHand", 0.f);
 
     // Reads and extract additive animations pose.
     const char* filenames[] = {OPTIONS_splay_animation, OPTIONS_curl_animation};
@@ -186,7 +208,7 @@ class AdditiveBlendSampleApplication : public ozz::sample::Application {
       ozz::animation::SamplingJob sampling_job;
       sampling_job.animation = &animation;
       sampling_job.cache = &cache_;
-      sampling_job.ratio = 1.f;  // Only needs the first frame pose
+      sampling_job.ratio = 0.f;  // Only needs the first frame pose
       sampling_job.output = make_span(additive_locals_[i]);
 
       // Samples animation.
@@ -245,13 +267,7 @@ class AdditiveBlendSampleApplication : public ozz::sample::Application {
 
   virtual void GetSceneBounds(ozz::math::Box* _bound) const {
     // Finds the "hand" joint in the joint hierarchy.
-    int hand = -1;
-    for (int i = 0; i < skeleton_.num_joints(); ++i) {
-      if (std::strstr(skeleton_.joint_names()[i], "RightHand")) {
-        hand = i;
-        break;
-      }
-    }
+    const int hand = FindJoint(skeleton_, "Lefthand");
 
     // Creates a bounding volume around the hand.
     if (hand != -1) {
@@ -262,6 +278,7 @@ class AdditiveBlendSampleApplication : public ozz::sample::Application {
       _bound->min = hand_position - extent;
       _bound->max = hand_position + extent;
     } else {
+      ozz::sample::ComputePostureBounds(make_span(models_), _bound);
     }
   }
 
@@ -274,6 +291,10 @@ class AdditiveBlendSampleApplication : public ozz::sample::Application {
 
   // Runtime animation.
   ozz::animation::Animation base_animation_;
+
+  // Per-joint weights used to define the base animation mask. Allows to remove
+  // hands from base animations.
+  ozz::vector<ozz::math::SimdFloat4> base_joint_weights_;
 
   // Main animation controller. This is a utility class that helps with
   // controlling animation playback time.
